@@ -74,6 +74,9 @@ class ApiClient {
 				res = await fetch(url, { ...fetchOptions, headers });
 			} else {
 				this.clearTokens();
+				// Sync auth store so UI updates immediately
+				const { user } = await import('$lib/stores/auth');
+				user.set(null);
 				if (typeof window !== 'undefined') {
 					window.location.href = '/login';
 				}
@@ -172,6 +175,46 @@ class ApiClient {
 	async getMessages(conversationId: string, limit = 50) {
 		return this.fetch(`/chat/conversations/${conversationId}/messages`, {
 			params: { limit: String(limit) },
+		});
+	}
+
+	// Notifications
+	async getNotificationPreferences() {
+		return this.fetch('/notifications/preferences');
+	}
+
+	async updateNotificationPreferences(prefs: Record<string, any>) {
+		return this.fetch('/notifications/preferences', {
+			method: 'PUT',
+			body: JSON.stringify(prefs),
+		});
+	}
+
+	async subscribePush(subscription: PushSubscriptionJSON) {
+		return this.fetch('/notifications/subscribe', {
+			method: 'POST',
+			body: JSON.stringify({ subscription }),
+		});
+	}
+
+	// Screening
+	async getScreeningHistory() {
+		return this.fetch('/screening/history');
+	}
+
+	// Protocol
+	async getCurrentProtocol() {
+		return this.fetch('/protocols/current');
+	}
+
+	async getPendingHomework() {
+		return this.fetch('/homework/pending');
+	}
+
+	async completeHomework(homeworkId: string, response: string) {
+		return this.fetch(`/homework/${homeworkId}/complete`, {
+			method: 'POST',
+			body: JSON.stringify({ response }),
 		});
 	}
 

@@ -69,6 +69,7 @@ function createChatStore() {
 
 		ws.onopen = () => {
 			connected.set(true);
+			ws!.send(JSON.stringify({ type: 'session_start' }));
 		};
 
 		ws.onmessage = (event) => {
