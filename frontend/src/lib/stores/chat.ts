@@ -34,6 +34,7 @@ function createChatStore() {
 
 	let ws: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let typingTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function loadHistory() {
 		const convoId = get(conversationId);
@@ -92,6 +93,7 @@ function createChatStore() {
 	}
 
 	function handleServerMessage(data: any) {
+		if (typingTimer) clearTimeout(typingTimer);
 		isTyping.set(false);
 
 		if (data.type === 'pong') return;
@@ -141,6 +143,20 @@ function createChatStore() {
 		};
 		messages.update((msgs) => [...msgs, msg]);
 		isTyping.set(true);
+
+		// Typing timeout — clear after 30s if no response
+		if (typingTimer) clearTimeout(typingTimer);
+		typingTimer = setTimeout(() => {
+			isTyping.set(false);
+			messages.update((msgs) => [
+				...msgs,
+				{
+					role: 'assistant' as const,
+					content: 'Mirror is taking longer than usual. Try sending your message again.',
+					timestamp: new Date().toISOString(),
+				},
+			]);
+		}, 30000);
 
 		ws.send(
 			JSON.stringify({

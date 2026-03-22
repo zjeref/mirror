@@ -17,10 +17,12 @@ from app.models.suggestion import Suggestion
 from app.models.life_area import LifeAreaScore
 from app.models.pattern import DetectedPattern
 from app.models.energy import EnergyReading
+from app.models.inferred_state import InferredStateRecord
 
 ALL_MODELS = [
     User, Conversation, Message, CheckIn, ThoughtRecord,
     Habit, HabitLog, Suggestion, LifeAreaScore, DetectedPattern, EnergyReading,
+    InferredStateRecord,
 ]
 
 

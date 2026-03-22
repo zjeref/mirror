@@ -1,11 +1,14 @@
+import logging
+
 from fastapi import WebSocket
+
+logger = logging.getLogger("mirror.ws")
 
 
 class ConnectionManager:
-    """Manages WebSocket connections per user."""
+    """Manages WebSocket connections per user with dead connection cleanup."""
 
     def __init__(self):
-        # user_id -> list of active WebSocket connections
         self.active_connections: dict[str, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
@@ -24,11 +27,21 @@ class ConnectionManager:
 
     async def send_to_user(self, user_id: str, message: dict):
         if user_id in self.active_connections:
+            dead = []
             for ws in self.active_connections[user_id]:
-                await ws.send_json(message)
+                try:
+                    await ws.send_json(message)
+                except Exception:
+                    dead.append(ws)
+            # Clean up dead connections
+            for ws in dead:
+                self.disconnect(ws, user_id)
 
     async def send_to_connection(self, websocket: WebSocket, message: dict):
-        await websocket.send_json(message)
+        try:
+            await websocket.send_json(message)
+        except Exception:
+            logger.warning("Failed to send to WebSocket — connection may be dead")
 
 
 manager = ConnectionManager()

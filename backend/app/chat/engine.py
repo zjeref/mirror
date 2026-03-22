@@ -1,13 +1,26 @@
-"""ConversationEngine - Routes messages to structured flows or generates responses."""
+"""ConversationEngine - Routes messages to structured flows or generates responses.
+
+Safety-first routing:
+1. Keyword crisis check (instant, <1ms)
+2. LLM risk assessment check (from previous message's state)
+3. Slow escalation detection (mood trending down)
+4. Active flow routing
+5. Intent detection → start flow
+6. LLM freeform response + state assessment
+"""
 
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.chat.flows.base import BaseFlow, FlowResult, UserContext
-from app.chat.flows.crisis import contains_crisis_keywords
+from app.chat.flows.crisis import (
+    contains_crisis_keywords,
+    check_llm_risk,
+    check_slow_escalation,
+    log_crisis_event,
+)
 from app.chat.flows.registry import get_flow_class
 
-# Import flows to trigger registration
 import app.chat.flows.check_in  # noqa: F401
 import app.chat.flows.crisis  # noqa: F401
 import app.chat.flows.reframe  # noqa: F401
@@ -18,7 +31,6 @@ from app.models.conversation import Conversation, Message
 from app.models.user import User
 
 
-# Intent detection patterns
 INTENT_PATTERNS: dict[str, list[str]] = {
     "check_in": [
         "check in", "checkin", "check-in", "how am i doing",
@@ -27,22 +39,19 @@ INTENT_PATTERNS: dict[str, list[str]] = {
     "reframe": [
         "i keep thinking", "i can't stop thinking", "negative thought",
         "reframe", "thought record", "challenge this thought",
-        "i always fail", "i'm a failure", "i'm worthless", "nothing works",
-        "i'm stupid", "i'm broken",
     ],
     "tiny_habit": [
         "build a habit", "new habit", "start a habit", "tiny habit",
-        "create a habit", "habit", "routine",
+        "create a habit",
     ],
 }
 
 
 class ConversationEngine:
-    """Orchestrates chat: routes to flows, detects intent, generates responses."""
-
     def __init__(self, user: User):
         self.user = user
         self.active_flows: dict[str, BaseFlow] = {}
+        self._message_count: int = 0  # Track for conversation length management
 
     def _build_user_context(self) -> UserContext:
         return UserContext(user_id=str(self.user.id), user_name=self.user.name)
@@ -52,6 +61,7 @@ class ConversationEngine:
     ) -> dict:
         conversation = await self._get_or_create_conversation(conversation_id)
         context = self._build_user_context()
+        self._message_count += 1
 
         user_msg = Message(conversation_id=str(conversation.id), role="user", content=content)
         await user_msg.insert()
@@ -73,21 +83,47 @@ class ConversationEngine:
     async def _route_message(
         self, content: str, conversation: Conversation, context: UserContext
     ) -> dict:
+        user_id = str(self.user.id)
+
+        # Safety Priority 1: Keyword crisis check (instant)
         if contains_crisis_keywords(content):
+            await log_crisis_event(user_id, content, "keyword")
             return await self._start_flow("crisis", conversation, context)
 
+        # Safety Priority 2: LLM risk assessment from previous message
+        if await check_llm_risk(user_id):
+            await log_crisis_event(user_id, content, "llm_risk")
+            return await self._start_flow("crisis", conversation, context)
+
+        # Safety Priority 3: Slow escalation detection
+        if await check_slow_escalation(user_id):
+            return self._make_response(
+                "I've noticed you've been going through a really tough stretch. "
+                "I want to check in — are you feeling safe right now?\n\n"
+                "If you're in crisis, please reach out to **988** (call or text) "
+                "or text **HOME** to **741741**."
+            )
+
+        # Priority 4: Active flow
         flow = self.active_flows.get(str(conversation.id))
         if flow and not flow.is_complete:
             result = await flow.process(content, context)
             if flow.is_complete:
                 await self._on_flow_complete(flow, conversation)
                 del self.active_flows[str(conversation.id)]
+                # Offer next steps after flow completion
+                if result.response_message:
+                    result.response_message += (
+                        "\n\nWould you like a suggestion for today, or just chat freely?"
+                    )
             return self._flow_result_to_response(result, flow, str(conversation.id))
 
+        # Priority 5: Intent detection
         detected_intent = self._detect_intent(content)
         if detected_intent:
             return await self._start_flow(detected_intent, conversation, context)
 
+        # Priority 6: LLM response + state assessment
         return await self._generate_smart_response(content, conversation, context)
 
     def _detect_intent(self, content: str) -> Optional[str]:
@@ -115,37 +151,109 @@ class ConversationEngine:
         self, content: str, conversation: Conversation, context: UserContext
     ) -> dict:
         from app.chat.llm.client import generate_response
+        from app.models.inferred_state import InferredStateRecord
 
+        # Get history EXCLUDING the current message (already inserted above)
         recent_messages = await Message.find(
             Message.conversation_id == str(conversation.id)
-        ).sort("-created_at").limit(20).to_list()
+        ).sort("-created_at").limit(21).to_list()
         recent_messages.reverse()
 
+        # Remove the last one (current message) to avoid duplication
         history = [
             {"role": msg.role, "content": msg.content}
-            for msg in recent_messages
+            for msg in recent_messages[:-1]
             if msg.role in ("user", "assistant")
         ]
 
+        # Build user context from previous LLM-inferred states
         user_context_parts = [f"User's name: {context.user_name}"]
-        latest_checkin = await CheckIn.find(
-            CheckIn.user_id == str(self.user.id)
-        ).sort("-created_at").first_or_none()
 
-        if latest_checkin:
+        recent_states = await InferredStateRecord.find(
+            InferredStateRecord.user_id == str(self.user.id),
+            InferredStateRecord.confidence >= 0.3,
+        ).sort("-created_at").limit(10).to_list()
+
+        if recent_states:
+            moods = [s.mood_valence for s in recent_states if s.mood_valence]
+            energies = [s.energy_level for s in recent_states if s.energy_level]
+            motivations = [s.motivation_level for s in recent_states if s.motivation_level]
+
+            if moods:
+                user_context_parts.append(f"Recent mood trend: {sum(moods)/len(moods):.1f}/10")
+            if energies:
+                user_context_parts.append(f"Recent energy trend: {sum(energies)/len(energies):.1f}/10")
+            if motivations:
+                user_context_parts.append(f"Recent motivation: {sum(motivations)/len(motivations):.1f}/10")
+
+            all_themes = {}
+            for s in recent_states:
+                for t in s.themes:
+                    all_themes[t] = all_themes.get(t, 0) + 1
+            if all_themes:
+                top = sorted(all_themes, key=all_themes.get, reverse=True)[:3]
+                user_context_parts.append(f"Recurring themes: {', '.join(top)}")
+
+            stages = [s.stage_signals.get("stage") for s in recent_states if s.stage_signals.get("stage")]
+            if stages:
+                stage = stages[0]
+                user_context_parts.append(f"Stage of change: {stage}")
+                # Stage-specific instruction for the LLM
+                stage_instructions = {
+                    "precontemplation": "User is NOT ready for change. DO NOT suggest actions. Just listen and explore values.",
+                    "contemplation": "User is ambivalent. Explore both sides. DO NOT rush to action plans.",
+                    "preparation": "User is getting ready. Help plan tiny concrete steps.",
+                    "action": "User is actively changing. Support, reinforce, troubleshoot obstacles.",
+                    "maintenance": "User is sustaining change. Reinforce identity: 'You're someone who...'",
+                    "relapse": "User had a setback. Normalize it. 'This is part of the process.' NO guilt.",
+                }
+                if stage in stage_instructions:
+                    user_context_parts.append(f"STAGE INSTRUCTION: {stage_instructions[stage]}")
+
+        # Conversation length management
+        if self._message_count >= 20:
             user_context_parts.append(
-                f"Last check-in: mood {latest_checkin.mood_score}/10, "
-                f"energy {latest_checkin.energy_score}/10"
+                "This conversation has been going for a while. Consider gently suggesting "
+                "the user take a break and check in tomorrow."
             )
-            if latest_checkin.mood_tags:
-                user_context_parts.append(f"Recent mood tags: {', '.join(latest_checkin.mood_tags)}")
 
-        response_text = await generate_response(
+        llm_response = await generate_response(
             user_message=content,
             conversation_history=history,
             user_context="\n".join(user_context_parts),
         )
-        return self._make_response(response_text)
+
+        # Save LLM-inferred state
+        if llm_response.state:
+            await self._save_llm_state(llm_response.state, content, conversation)
+
+        return self._make_response(llm_response.text)
+
+    async def _save_llm_state(self, state: dict, content: str, conversation: Conversation):
+        """Save the structured state assessment from Claude's response."""
+        from app.models.inferred_state import InferredStateRecord
+
+        record = InferredStateRecord(
+            user_id=str(self.user.id),
+            conversation_id=str(conversation.id),
+            message_content="",  # Don't store raw content for privacy
+            mood_valence=state.get("mood"),
+            energy_level=state.get("energy"),
+            motivation_level=state.get("motivation"),
+            absolutist_count=0,
+            first_person_ratio=0,
+            word_count=len(content.split()),
+            change_talk_score=state.get("change_talk", 0),
+            sustain_talk_score=state.get("sustain_talk", round(1 - state.get("change_talk", 0.5), 2)),
+            stage_signals={
+                "stage": state.get("stage", ""),
+                "risk": state.get("risk", "none"),
+            },
+            themes=state.get("themes", []),
+            emotions=state.get("emotions", []),
+            confidence=state.get("confidence", 0.5),
+        )
+        await record.insert()
 
     def _flow_result_to_response(
         self, result: FlowResult, flow: BaseFlow, conversation_id: str

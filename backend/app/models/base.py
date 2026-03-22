@@ -21,6 +21,7 @@ async def init_db():
     from app.models.life_area import LifeAreaScore
     from app.models.pattern import DetectedPattern
     from app.models.energy import EnergyReading
+    from app.models.inferred_state import InferredStateRecord
 
     _client = AsyncIOMotorClient(settings.mongodb_url)
     db = _client[settings.mongodb_db_name]
@@ -39,6 +40,7 @@ async def init_db():
             LifeAreaScore,
             DetectedPattern,
             EnergyReading,
+            InferredStateRecord,
         ],
     )
 
