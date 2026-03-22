@@ -11,9 +11,8 @@ Actions:
 Referral resources are included in every routing decision at or above
 moderately_severe, and always for PCL-5 positive screens.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
-
 
 REFERRAL_RESOURCES = (
     "If you're in crisis right now, please reach out:\n"

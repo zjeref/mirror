@@ -4,7 +4,6 @@ Analyzes recent InferredStateRecords to detect when a user may benefit
 from a validated screening instrument (PHQ-9, GAD-7, PCL-5).
 """
 
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 

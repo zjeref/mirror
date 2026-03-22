@@ -1,9 +1,9 @@
 """Protocol registry for looking up and filtering clinical protocols."""
 
-from app.protocols.base import BaseProtocol
-from app.protocols.cbt_depression import CBTDepressionProtocol
 from app.protocols.anxiety import AnxietyProtocol
+from app.protocols.base import BaseProtocol
 from app.protocols.behavioral_activation import BehavioralActivationProtocol
+from app.protocols.cbt_depression import CBTDepressionProtocol
 
 _PROTOCOLS: dict[str, BaseProtocol] = {
     "cbt_depression": CBTDepressionProtocol(),

@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from beanie import Document, Indexed
-from pydantic import Field
 
 
 class Homework(Document):

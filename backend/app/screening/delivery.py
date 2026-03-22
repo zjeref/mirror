@@ -1,11 +1,10 @@
 """Conversational delivery of screening instruments via chat flows."""
 
 import random
-from typing import Any, Optional
+from typing import Any
 
 from app.chat.flows.base import BaseFlow, FlowPrompt, FlowResult, UserContext
-from app.screening.instruments import get_instrument, Instrument
-
+from app.screening.instruments import Instrument, get_instrument
 
 _TRANSITIONS = [
     "Got it.",
@@ -105,7 +104,6 @@ class ScreeningFlow(BaseFlow):
         )
 
     async def on_complete(self, context: UserContext) -> str:
-        total = self.collected_data.get("total_score", 0)
         return (
             f"Thank you for completing the {self.instrument.display_name}. "
             f"Your responses have been recorded. "

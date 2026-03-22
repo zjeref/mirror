@@ -10,7 +10,6 @@ from typing import Optional
 from beanie.operators import In
 
 from app.chat.flows.base import FlowResult, UserContext
-from app.models.homework import Homework
 from app.models.notification import PendingAction
 from app.models.program import ProgramEnrollment
 from app.models.protocol import ProtocolEnrollment

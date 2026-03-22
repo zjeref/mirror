@@ -20,6 +20,45 @@ function decodeJwt(token: string): { exp?: number; sub?: string; name?: string; 
 function createAuthStore() {
 	const { subscribe, set } = writable<User | null>(null);
 
+	function hydrateFromToken(token: string): boolean {
+		const payload = decodeJwt(token);
+		if (!payload) return false;
+		set({
+			email: payload.email || payload.sub || '',
+			name: payload.name || '',
+		});
+		return true;
+	}
+
+	async function tryRefresh(): Promise<boolean> {
+		const refreshToken = localStorage.getItem('refresh_token');
+		if (!refreshToken) return false;
+
+		try {
+			const apiBase = import.meta.env.VITE_API_URL || '/api';
+			const res = await fetch(`${apiBase}/auth/refresh`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ refresh_token: refreshToken }),
+			});
+
+			if (!res.ok) return false;
+
+			const data = await res.json();
+			localStorage.setItem('access_token', data.access_token);
+			localStorage.setItem('refresh_token', data.refresh_token);
+			return hydrateFromToken(data.access_token);
+		} catch {
+			return false;
+		}
+	}
+
+	function clearAll() {
+		localStorage.removeItem('access_token');
+		localStorage.removeItem('refresh_token');
+		set(null);
+	}
+
 	return {
 		subscribe,
 		set,
@@ -28,45 +67,43 @@ function createAuthStore() {
 		},
 		logout() {
 			if (browser) {
-				// Clear chat state
 				import('$lib/stores/chat').then(({ chat }) => chat.logout());
-				localStorage.removeItem('access_token');
-				localStorage.removeItem('refresh_token');
+				clearAll();
+			} else {
+				set(null);
 			}
-			set(null);
 		},
-		init() {
-			if (browser) {
-				const token = localStorage.getItem('access_token');
-				if (!token) {
-					set(null);
-					return;
-				}
+		async init() {
+			if (!browser) return;
 
-				const payload = decodeJwt(token);
-				if (!payload) {
-					// Token is corrupted — clear and force re-login
-					localStorage.removeItem('access_token');
-					localStorage.removeItem('refresh_token');
+			const token = localStorage.getItem('access_token');
+			if (!token) {
+				// No access token — try refresh
+				const refreshed = await tryRefresh();
+				if (!refreshed) {
 					set(null);
-					return;
 				}
-
-				// Check if expired
-				if (payload.exp && payload.exp * 1000 < Date.now()) {
-					// Token expired — clear and force re-login
-					localStorage.removeItem('access_token');
-					localStorage.removeItem('refresh_token');
-					set(null);
-					return;
-				}
-
-				// Token is valid — hydrate user from payload
-				set({
-					email: payload.email || payload.sub || '',
-					name: payload.name || '',
-				});
+				return;
 			}
+
+			const payload = decodeJwt(token);
+			if (!payload) {
+				clearAll();
+				return;
+			}
+
+			// Check if expired
+			if (payload.exp && payload.exp * 1000 < Date.now()) {
+				// Access token expired — try refresh instead of clearing everything
+				const refreshed = await tryRefresh();
+				if (!refreshed) {
+					clearAll();
+				}
+				return;
+			}
+
+			// Token is valid — hydrate user from payload
+			hydrateFromToken(token);
 		},
 	};
 }

@@ -54,6 +54,7 @@ class NotificationService:
 
         try:
             from pywebpush import webpush
+
             from app.config import settings
 
             webpush(

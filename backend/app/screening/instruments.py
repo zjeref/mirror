@@ -4,7 +4,7 @@ Validated screening instruments: PHQ-9, GAD-7, PCL-5.
 Each instrument has clinical wording (from validated measures) and
 conversational rephrasing for use in chat-based administration.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
