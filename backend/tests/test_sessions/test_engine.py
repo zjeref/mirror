@@ -1,10 +1,14 @@
 """Tests for SessionEngine orchestration layer."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import pytest_asyncio
 
 from app.chat.flows.base import UserContext
+from app.models.conversation import Conversation, Message
 from app.models.homework import Homework
+from app.models.inferred_state import InferredStateRecord
 from app.models.notification import PendingAction
 from app.models.protocol import ProtocolEnrollment
 from app.models.program import ProgramEnrollment
@@ -129,10 +133,12 @@ class TestHandleSessionStart:
         assert "session" in result["message"].lower() or "Session" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_nothing_pending_returns_none(self, test_user, user_context):
+    async def test_nothing_pending_returns_onboarding(self, test_user, user_context):
+        """With no conversations, returns onboarding greeting (never None)."""
         engine = SessionEngine(test_user)
         result = await engine.handle_session_start(user_context)
-        assert result is None
+        assert result is not None
+        assert "Welcome to Mirror" in result["message"]
 
 
 class TestEnroll:
@@ -216,3 +222,157 @@ class TestOnScreeningComplete:
         assert sr is not None
         assert sr.instrument == "phq9"
         assert sr.status == "completed"
+
+
+class TestProactiveOpener:
+    """Tests for proactive conversation opener (priorities 4-7)."""
+
+    @pytest.mark.asyncio
+    async def test_session_start_pattern_alert_low_mood(self, test_user, user_context):
+        """3 days of low mood_valence triggers direct mood alert."""
+        now = datetime.now(timezone.utc)
+        for i in range(3):
+            await InferredStateRecord(
+                user_id=str(test_user.id),
+                mood_valence=2.5,
+                confidence=0.5,
+                created_at=now - timedelta(days=i),
+            ).insert()
+
+        # Need at least one conversation so it doesn't trigger onboarding
+        conv = await Conversation(
+            user_id=str(test_user.id), title="test"
+        ).insert()
+        await Message(
+            conversation_id=str(conv.id),
+            role="user",
+            content="hello",
+            created_at=now,
+        ).insert()
+
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+
+        assert result is not None
+        assert "mood has been lower" in result["message"]
+        assert "check in on" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_session_start_positive_trend(self, test_user, user_context):
+        """3 days of improving mood triggers warm positive message."""
+        now = datetime.now(timezone.utc)
+        moods = [4.0, 5.5, 7.0]
+        for i, mood in enumerate(moods):
+            await InferredStateRecord(
+                user_id=str(test_user.id),
+                mood_valence=mood,
+                confidence=0.5,
+                created_at=now - timedelta(days=2 - i),  # oldest first
+            ).insert()
+
+        conv = await Conversation(
+            user_id=str(test_user.id), title="test"
+        ).insert()
+        await Message(
+            conversation_id=str(conv.id),
+            role="user",
+            content="hello",
+            created_at=now,
+        ).insert()
+
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+
+        assert result is not None
+        assert "good direction" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_session_start_contextual_same_day(self, test_user, user_context):
+        """Message from today yields 'Hey again' greeting."""
+        now = datetime.now(timezone.utc)
+        conv = await Conversation(
+            user_id=str(test_user.id), title="test"
+        ).insert()
+        await Message(
+            conversation_id=str(conv.id),
+            role="user",
+            content="hello",
+            created_at=now,
+        ).insert()
+
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+
+        assert result is not None
+        assert "Hey again" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_session_start_contextual_week_away(self, test_user, user_context):
+        """Message from 8 days ago yields 'been a while' greeting."""
+        now = datetime.now(timezone.utc)
+        conv = await Conversation(
+            user_id=str(test_user.id), title="test"
+        ).insert()
+        await Message(
+            conversation_id=str(conv.id),
+            role="user",
+            content="hello",
+            created_at=now - timedelta(days=8),
+        ).insert()
+
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+
+        assert result is not None
+        assert "been a while" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_session_start_onboarding_new_user(self, test_user, user_context):
+        """User with no conversations gets welcome message + onboarding flag."""
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+
+        assert result is not None
+        assert "Welcome to Mirror" in result["message"]
+        assert "5 minutes" in result["message"]
+        assert engine._onboarding_pending is True
+
+    @pytest.mark.asyncio
+    async def test_onboarding_triggers_screening(self, test_user, user_context):
+        """After onboarding greeting, next try_handle starts PHQ-9 screening."""
+        engine = SessionEngine(test_user)
+
+        # First: session start sends onboarding
+        await engine.handle_session_start(user_context)
+        assert engine._onboarding_pending is True
+
+        # Second: user replies → triggers PHQ-9
+        result = await engine.try_handle("Sure, let's do it", user_context)
+
+        assert result is not None
+        assert engine._onboarding_pending is False
+        assert engine._active_screening_flow is not None
+        assert engine._active_screening_flow.instrument.name == "phq9"
+
+    @pytest.mark.asyncio
+    async def test_session_start_never_returns_none(self, test_user, user_context):
+        """handle_session_start never returns None for any user state."""
+        # Case 1: New user (no conversations)
+        engine = SessionEngine(test_user)
+        result = await engine.handle_session_start(user_context)
+        assert result is not None
+
+        # Case 2: Returning user with conversation
+        conv = await Conversation(
+            user_id=str(test_user.id), title="test"
+        ).insert()
+        await Message(
+            conversation_id=str(conv.id),
+            role="user",
+            content="hello",
+            created_at=datetime.now(timezone.utc),
+        ).insert()
+
+        engine2 = SessionEngine(test_user)
+        result2 = await engine2.handle_session_start(user_context)
+        assert result2 is not None

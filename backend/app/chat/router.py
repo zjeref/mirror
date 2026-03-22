@@ -28,17 +28,6 @@ async def chat_websocket(websocket: WebSocket, token: str = Query(...)):
     engine = ConversationEngine(user)
 
     try:
-        has_conversations = await Conversation.find(
-            Conversation.user_id == str(user.id)
-        ).first_or_none()
-
-        if not has_conversations:
-            await manager.send_to_connection(websocket, {
-                "type": "message",
-                "content": f"Hey {user.name}. Welcome to Mirror. How are you doing right now?",
-                "sender": "mirror",
-            })
-
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")

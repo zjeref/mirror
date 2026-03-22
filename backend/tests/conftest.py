@@ -23,12 +23,13 @@ from app.models.protocol import ProtocolEnrollment, ProtocolSession
 from app.models.homework import Homework
 from app.models.notification import PendingAction
 from app.models.program import ProgramEnrollment
+from app.models.activity import UserValues
 
 ALL_MODELS = [
     User, Conversation, Message, CheckIn, ThoughtRecord,
     Habit, HabitLog, Suggestion, LifeAreaScore, DetectedPattern, EnergyReading,
     InferredStateRecord, ScreeningResult, ProtocolEnrollment, ProtocolSession,
-    Homework, PendingAction, ProgramEnrollment,
+    Homework, PendingAction, ProgramEnrollment, UserValues,
 ]
 
 
