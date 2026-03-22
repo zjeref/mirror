@@ -18,11 +18,16 @@ from app.models.life_area import LifeAreaScore
 from app.models.pattern import DetectedPattern
 from app.models.energy import EnergyReading
 from app.models.inferred_state import InferredStateRecord
+from app.models.screening import ScreeningResult
+from app.models.protocol import ProtocolEnrollment, ProtocolSession
+from app.models.homework import Homework
+from app.models.notification import PendingAction
 
 ALL_MODELS = [
     User, Conversation, Message, CheckIn, ThoughtRecord,
     Habit, HabitLog, Suggestion, LifeAreaScore, DetectedPattern, EnergyReading,
-    InferredStateRecord,
+    InferredStateRecord, ScreeningResult, ProtocolEnrollment, ProtocolSession,
+    Homework, PendingAction,
 ]
 
 

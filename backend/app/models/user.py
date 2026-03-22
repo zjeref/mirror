@@ -11,6 +11,12 @@ class User(Document):
     password_hash: str
     preferences: dict = Field(default_factory=dict)
     energy_profile: dict = Field(default_factory=dict)
+    preferred_session_time: str = "evening"
+    notification_enabled: bool = False
+    max_notifications_per_day: int = 2
+    quiet_hours_start: str = "22:00"
+    quiet_hours_end: str = "08:00"
+    push_subscription: Optional[dict] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

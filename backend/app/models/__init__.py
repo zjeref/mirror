@@ -11,10 +11,15 @@ from app.models.user import User
 from app.models.journal import JournalEntry
 from app.models.activity import Activity, UserValues
 from app.models.program import ProgramEnrollment
+from app.models.screening import ScreeningResult
+from app.models.protocol import ProtocolEnrollment, ProtocolSession
+from app.models.homework import Homework
+from app.models.notification import PendingAction
 
 __all__ = [
     "Activity", "CheckIn", "Conversation", "DetectedPattern", "EnergyReading",
-    "Habit", "HabitLog", "JournalEntry", "LifeAreaScore", "Message",
-    "ProgramEnrollment", "Suggestion", "ThoughtRecord", "User", "UserValues",
+    "Habit", "HabitLog", "Homework", "JournalEntry", "LifeAreaScore", "Message",
+    "PendingAction", "ProgramEnrollment", "ProtocolEnrollment", "ProtocolSession",
+    "ScreeningResult", "Suggestion", "ThoughtRecord", "User", "UserValues",
     "init_db", "close_db",
 ]

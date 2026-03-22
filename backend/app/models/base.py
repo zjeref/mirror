@@ -25,6 +25,10 @@ async def init_db():
     from app.models.journal import JournalEntry
     from app.models.activity import Activity, UserValues
     from app.models.program import ProgramEnrollment
+    from app.models.screening import ScreeningResult
+    from app.models.protocol import ProtocolEnrollment, ProtocolSession
+    from app.models.homework import Homework
+    from app.models.notification import PendingAction
 
     _client = AsyncIOMotorClient(settings.mongodb_url)
     db = _client[settings.mongodb_db_name]
@@ -48,6 +52,11 @@ async def init_db():
             Activity,
             UserValues,
             ProgramEnrollment,
+            ScreeningResult,
+            ProtocolEnrollment,
+            ProtocolSession,
+            Homework,
+            PendingAction,
         ],
     )
 
