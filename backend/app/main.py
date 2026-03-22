@@ -34,11 +34,13 @@ def create_app() -> FastAPI:
     from app.chat.router import router as chat_router
     from app.dashboard.router import router as dashboard_router
     from app.psychology.router import router as psychology_router
+    from app.journal.router import router as journal_router
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
     app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
     app.include_router(psychology_router, prefix="/api", tags=["psychology"])
+    app.include_router(journal_router, prefix="/api", tags=["journal"])
 
     return app
 

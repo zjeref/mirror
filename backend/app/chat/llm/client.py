@@ -157,7 +157,7 @@ async def _bedrock_request(
             },
             json={
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 700,
+                "max_tokens": 1200,
                 "system": system,
                 "messages": messages,
             },

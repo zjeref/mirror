@@ -9,6 +9,6 @@
 	let { class: className = '', children }: Props = $props();
 </script>
 
-<div class="bg-[var(--color-surface-light)] rounded-xl border border-[var(--color-border)] p-5 {className}">
+<div class="glass-card rounded-2xl p-5 transition-all duration-300 hover:border-[var(--color-outline-variant)]/25 {className}">
 	{@render children()}
 </div>

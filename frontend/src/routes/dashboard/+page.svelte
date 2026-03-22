@@ -16,47 +16,64 @@
 	});
 </script>
 
-<div class="h-full overflow-y-auto">
-	<div class="max-w-5xl mx-auto px-4 py-6">
-		<h1 class="text-xl font-semibold text-white mb-6">Dashboard</h1>
+<div class="h-full overflow-y-auto bg-gradient-to-b from-[var(--color-surface)] to-[#1a1a2e]">
+	<div class="max-w-5xl mx-auto px-6 py-8">
+		<!-- Header -->
+		<div class="flex items-center justify-between mb-8">
+			<div>
+				<h1 class="text-2xl font-bold text-[var(--color-on-surface)] tracking-tight">Your week at a glance</h1>
+				<p class="text-sm text-[var(--color-on-surface-variant)]/60 mt-1">Patterns Mirror has noticed</p>
+			</div>
+			{#if $data}
+				<div class="flex items-center gap-2 px-4 py-2 rounded-full glass-card">
+					<span class="material-symbols-outlined filled text-[var(--color-tertiary)] text-lg">local_fire_department</span>
+					<span class="text-sm font-bold text-[var(--color-tertiary)]">{$data.days_active}</span>
+					<span class="text-xs text-[var(--color-on-surface-variant)]">days active</span>
+				</div>
+			{/if}
+		</div>
 
 		{#if $loading}
 			<div class="flex items-center justify-center h-48">
-				<p class="text-slate-500">Loading your data...</p>
+				<div class="flex gap-1.5">
+					<div class="w-2 h-2 bg-[var(--color-tertiary)]/60 rounded-full animate-bounce"></div>
+					<div class="w-2 h-2 bg-[var(--color-tertiary)]/60 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+					<div class="w-2 h-2 bg-[var(--color-tertiary)]/60 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+				</div>
 			</div>
 		{:else if $error}
-			<div class="bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm rounded-lg px-4 py-3">
-				{$error}
+			<div class="glass-card rounded-2xl p-5 border-[var(--color-error)]/20">
+				<p class="text-[var(--color-error)] text-sm">{$error}</p>
 			</div>
 		{:else if $data}
 			<!-- Quick stats -->
-			<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+			<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
 				<Card>
-					<p class="text-xs text-slate-500 uppercase tracking-wide">Mood</p>
-					<p class="text-2xl font-bold {($data.current_mood ?? 0) >= 6 ? 'text-green-400' : ($data.current_mood ?? 0) >= 4 ? 'text-amber-400' : 'text-rose-400'}">
+					<p class="text-[10px] text-[var(--color-on-surface-variant)] uppercase tracking-widest mb-2">Mood</p>
+					<p class="text-3xl font-bold text-[var(--color-tertiary)]">
 						{$data.current_mood ?? '—'}
-						<span class="text-sm font-normal text-slate-500">/10</span>
+						<span class="text-sm font-normal text-[var(--color-outline)]">/10</span>
 					</p>
 				</Card>
 				<Card>
-					<p class="text-xs text-slate-500 uppercase tracking-wide">Energy</p>
-					<p class="text-2xl font-bold {($data.current_energy ?? 0) >= 6 ? 'text-green-400' : ($data.current_energy ?? 0) >= 4 ? 'text-amber-400' : 'text-rose-400'}">
+					<p class="text-[10px] text-[var(--color-on-surface-variant)] uppercase tracking-widest mb-2">Energy</p>
+					<p class="text-3xl font-bold text-[var(--color-primary)]">
 						{$data.current_energy ?? '—'}
-						<span class="text-sm font-normal text-slate-500">/10</span>
+						<span class="text-sm font-normal text-[var(--color-outline)]">/10</span>
 					</p>
 				</Card>
 				<Card>
-					<p class="text-xs text-slate-500 uppercase tracking-wide">Check-ins</p>
-					<p class="text-2xl font-bold text-indigo-400">{$data.total_check_ins}</p>
+					<p class="text-[10px] text-[var(--color-on-surface-variant)] uppercase tracking-widest mb-2">Check-ins</p>
+					<p class="text-3xl font-bold text-[var(--color-on-surface)]">{$data.total_check_ins}</p>
 				</Card>
 				<Card>
-					<p class="text-xs text-slate-500 uppercase tracking-wide">Days Active</p>
-					<p class="text-2xl font-bold text-indigo-400">{$data.days_active}</p>
+					<p class="text-[10px] text-[var(--color-on-surface-variant)] uppercase tracking-widest mb-2">Days Active</p>
+					<p class="text-3xl font-bold text-[var(--color-on-surface)]">{$data.days_active}</p>
 				</Card>
 			</div>
 
 			<!-- Charts row -->
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
 				<Card>
 					<MoodTrend dataPoints={$data.mood_data_points} trend={$data.mood_trend} />
 				</Card>
@@ -75,11 +92,13 @@
 				</Card>
 			</div>
 		{:else}
-			<div class="flex items-center justify-center h-48">
-				<div class="text-center">
-					<p class="text-slate-400 mb-2">No data yet</p>
-					<p class="text-sm text-slate-500">Start by <a href="/chat" class="text-indigo-400 hover:underline">chatting with Mirror</a> and doing a check-in.</p>
-				</div>
+			<div class="flex flex-col items-center justify-center h-64 gap-4">
+				<span class="material-symbols-outlined text-5xl text-[var(--color-primary)]/20">dashboard</span>
+				<p class="text-[var(--color-on-surface-variant)]/60">No data yet</p>
+				<a href="/chat" class="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--color-primary-container)]/20 text-[var(--color-primary)] hover:bg-[var(--color-primary-container)]/30 transition-colors text-sm">
+					<span class="material-symbols-outlined text-base">chat_bubble</span>
+					Start chatting to build your dashboard
+				</a>
 			</div>
 		{/if}
 	</div>

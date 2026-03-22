@@ -7,21 +7,26 @@
 	let { children } = $props();
 
 	const isAuthPage = $derived(
-		page.url.pathname === '/login' || page.url.pathname === '/register'
+		page.url.pathname === '/login' || page.url.pathname === '/register' || page.url.pathname === '/'
 	);
+	const showNav = $derived(!isAuthPage && $user);
 </script>
 
 <svelte:head>
 	<title>Mirror</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
-<div class="h-screen flex flex-col">
-	{#if !isAuthPage && $user}
+<div class="h-screen flex overflow-hidden">
+	{#if showNav}
 		<Nav />
 	{/if}
 	<main class="flex-1 overflow-hidden">
 		{@render children()}
 	</main>
 </div>
+
+<!-- Background ambient glow -->
+{#if showNav}
+	<div class="fixed top-[-10%] right-[-5%] w-[40rem] h-[40rem] bg-[#6c5ce7]/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
+	<div class="fixed bottom-[-10%] left-[10%] w-[30rem] h-[30rem] bg-[#edbf7c]/5 rounded-full blur-[100px] pointer-events-none z-0"></div>
+{/if}

@@ -7,12 +7,12 @@
 	let { options, onSelect }: Props = $props();
 </script>
 
-<div class="flex flex-wrap gap-2 mb-3 px-2">
+<div class="flex flex-wrap gap-2 mb-2">
 	{#each options as option}
 		<button
 			onclick={() => onSelect(option)}
-			class="px-3 py-1.5 text-sm rounded-full border border-indigo-500/50 text-indigo-300
-				hover:bg-indigo-500/20 hover:border-indigo-400 transition-colors"
+			class="px-4 py-2 text-sm rounded-full border border-[var(--color-primary-container)]/40 text-[var(--color-primary)]
+				hover:bg-[var(--color-primary-container)]/20 hover:border-[var(--color-primary)] transition-all duration-200"
 		>
 			{option}
 		</button>
