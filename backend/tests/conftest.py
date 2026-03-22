@@ -22,12 +22,13 @@ from app.models.screening import ScreeningResult
 from app.models.protocol import ProtocolEnrollment, ProtocolSession
 from app.models.homework import Homework
 from app.models.notification import PendingAction
+from app.models.program import ProgramEnrollment
 
 ALL_MODELS = [
     User, Conversation, Message, CheckIn, ThoughtRecord,
     Habit, HabitLog, Suggestion, LifeAreaScore, DetectedPattern, EnergyReading,
     InferredStateRecord, ScreeningResult, ProtocolEnrollment, ProtocolSession,
-    Homework, PendingAction,
+    Homework, PendingAction, ProgramEnrollment,
 ]
 
 
