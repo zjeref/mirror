@@ -36,6 +36,9 @@ def create_app() -> FastAPI:
     from app.psychology.router import router as psychology_router
     from app.journal.router import router as journal_router
     from app.activity.router import router as activity_router
+    from app.screening.router import router as screening_router
+    from app.sessions.router import router as sessions_router
+    from app.notifications.router import router as notifications_router
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
@@ -43,6 +46,9 @@ def create_app() -> FastAPI:
     app.include_router(psychology_router, prefix="/api", tags=["psychology"])
     app.include_router(journal_router, prefix="/api", tags=["journal"])
     app.include_router(activity_router, prefix="/api", tags=["activities"])
+    app.include_router(screening_router, prefix="/api/screening", tags=["screening"])
+    app.include_router(sessions_router, prefix="/api", tags=["sessions"])
+    app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
 
     return app
 
