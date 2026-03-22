@@ -22,43 +22,46 @@
 	};
 
 	const typeColors: Record<string, string> = {
-		temporal: 'bg-blue-500/20 text-blue-400',
-		behavior_chain: 'bg-purple-500/20 text-purple-400',
-		energy_cycle: 'bg-amber-500/20 text-amber-400',
-		strategy_effectiveness: 'bg-green-500/20 text-green-400',
-		mood_trigger: 'bg-rose-500/20 text-rose-400',
+		temporal: 'bg-[var(--color-primary)]/15 text-[var(--color-primary)]',
+		behavior_chain: 'bg-[var(--color-primary-container)]/20 text-[var(--color-primary)]',
+		energy_cycle: 'bg-[var(--color-tertiary)]/15 text-[var(--color-tertiary)]',
+		strategy_effectiveness: 'bg-emerald-500/15 text-emerald-400',
+		mood_trigger: 'bg-[var(--color-error)]/15 text-[var(--color-error)]',
 	};
 </script>
 
 <div>
-	<h3 class="text-sm font-medium text-slate-300 mb-3">Detected Patterns</h3>
+	<h3 class="text-sm font-semibold text-[var(--color-on-surface)] mb-3">Patterns Noticed</h3>
 
 	{#if patterns.length > 0}
 		<div class="space-y-3">
 			{#each patterns as pattern}
-				<div class="bg-[var(--color-surface)] rounded-lg p-3">
-					<div class="flex items-start justify-between gap-2 mb-1">
-						<span class="text-xs px-2 py-0.5 rounded-full {typeColors[pattern.pattern_type] ?? 'bg-slate-500/20 text-slate-400'}">
+				<div class="bg-[var(--color-surface-low)]/50 rounded-xl p-4">
+					<div class="flex items-start justify-between gap-2 mb-2">
+						<span class="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider {typeColors[pattern.pattern_type] ?? 'bg-[var(--color-surface-highest)]/50 text-[var(--color-outline)]'}">
 							{typeLabels[pattern.pattern_type] ?? pattern.pattern_type}
 						</span>
-						<div class="flex items-center gap-1">
-							<div class="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+						<div class="flex items-center gap-1.5">
+							<div class="w-12 h-1.5 bg-[var(--color-surface-highest)] rounded-full overflow-hidden">
 								<div
-									class="h-full bg-indigo-500 rounded-full"
+									class="h-full bg-[var(--color-tertiary)] rounded-full"
 									style="width: {pattern.confidence * 100}%"
 								></div>
 							</div>
-							<span class="text-xs text-slate-500">{Math.round(pattern.confidence * 100)}%</span>
+							<span class="text-[10px] text-[var(--color-outline)]">{Math.round(pattern.confidence * 100)}%</span>
 						</div>
 					</div>
-					<p class="text-sm text-slate-200 mb-1">{pattern.description}</p>
+					<p class="text-sm text-[var(--color-on-surface)] mb-1">{pattern.description}</p>
 					{#if pattern.actionable_insight}
-						<p class="text-xs text-slate-400 italic">{pattern.actionable_insight}</p>
+						<p class="text-xs text-[var(--color-on-surface-variant)] italic">{pattern.actionable_insight}</p>
 					{/if}
 				</div>
 			{/each}
 		</div>
 	{:else}
-		<p class="text-sm text-slate-500">Keep checking in — patterns emerge after 5+ data points.</p>
+		<div class="flex flex-col items-center gap-2 py-4">
+			<span class="material-symbols-outlined text-2xl text-[var(--color-outline)]/30">pattern</span>
+			<p class="text-sm text-[var(--color-outline)]">Patterns emerge after 5+ conversations</p>
+		</div>
 	{/if}
 </div>
