@@ -131,6 +131,50 @@ class SessionEngine:
         await enrollment.insert()
         return enrollment
 
+    async def check_mid_protocol_screening(
+        self, enrollment: ProtocolEnrollment
+    ) -> bool:
+        """Check if current session number matches protocol's mid-screening point."""
+        protocol = get_protocol(enrollment.protocol_id)
+        if not protocol:
+            return False
+        return enrollment.current_session_number == protocol.mid_screening_session
+
+    async def switch_protocol(
+        self,
+        current_enrollment: ProtocolEnrollment,
+        new_protocol_id: str,
+    ) -> Optional[ProtocolEnrollment]:
+        """Switch from current protocol to a new one (e.g., CBT -> BA)."""
+        new_protocol = get_protocol(new_protocol_id)
+        if not new_protocol:
+            return None
+
+        # Determine starting session (skip overlap sessions)
+        start_session = 1
+        if hasattr(new_protocol, "skip_sessions_on_switch"):
+            skippable = new_protocol.skip_sessions_on_switch
+            start_session = max(skippable) + 1 if skippable else 1
+
+        # Create new enrollment
+        new_enrollment = ProtocolEnrollment(
+            user_id=current_enrollment.user_id,
+            protocol_id=new_protocol_id,
+            current_session_number=start_session,
+            status="enrolled",
+            entry_screening_id=current_enrollment.entry_screening_id,
+            screening_scores=current_enrollment.screening_scores,
+        )
+        await new_enrollment.insert()
+
+        # Mark old as switched
+        current_enrollment.status = "switched"
+        current_enrollment.switched_to_enrollment_id = str(new_enrollment.id)
+        current_enrollment.end_date = datetime.now(timezone.utc)
+        await current_enrollment.save()
+
+        return new_enrollment
+
     async def _get_active_enrollment(self) -> Optional[ProtocolEnrollment]:
         """Find enrollment with status in enrolled/active/paused."""
         return await ProtocolEnrollment.find_one(
@@ -146,7 +190,7 @@ class SessionEngine:
         instrument_name = flow.instrument.name
         total_score = collected.get("total_score", 0)
         item_scores = collected.get("item_scores", [])
-        severity_tier = collected.get("severity", "")
+        severity_tier = collected.get("severity_tier", "")
 
         # Save ScreeningResult
         screening_result = ScreeningResult(
