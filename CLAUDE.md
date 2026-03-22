@@ -2,7 +2,7 @@
 
 ## Architecture
 - **Backend**: FastAPI (Python) at `backend/`
-- **Frontend**: SvelteKit at `frontend/` (not yet built)
+- **Frontend**: SvelteKit at `frontend/`
 - **CLI**: Typer client at `cli/` (not yet built)
 - **Docs**: `docs/` for architecture and psychology engine docs
 
@@ -21,7 +21,7 @@ Read `docs/architecture.md` for full system design.
 - `psychology/` - Pure domain logic (no HTTP): CBT, tiny habits, energy ladders, patterns, suggestions
 - `dashboard/` - Aggregation queries for dashboard data
 - `tasks/` - Background jobs: pattern detection, streak calculation
-- `models/` - SQLAlchemy models (User, Conversation, Message, CheckIn, etc.)
+- `models/` - Beanie ODM documents (User, Conversation, Message, CheckIn, etc.) on MongoDB
 
 ## Key Design Principles
 1. **Never guilt the user.** Validate feelings first, suggest second.
@@ -56,21 +56,20 @@ Read `docs/architecture.md` for full system design.
 5. Document in `docs/psychology-engine.md`
 
 ### Database Changes
-1. Create new Alembic migration: `cd backend && alembic revision --autogenerate -m "description"`
-2. Update models in `backend/app/models/`
-3. Never delete columns, only add (backwards compatibility)
-4. Run migration: `cd backend && alembic upgrade head`
+1. Add new Beanie Document models in `backend/app/models/`
+2. Register new documents in `backend/app/models/__init__.py` for Beanie init
+3. Never remove fields from existing documents, only add (backwards compatibility)
+4. MongoDB collections are auto-created by Beanie on first use
 
 ## Development
 ```bash
 make dev          # Start FastAPI dev server
 make test         # Run pytest
-make migrate      # Run Alembic migrations
 make lint         # Run ruff
 ```
 
 ## Testing
 - All tests in `backend/tests/`, mirrors `app/` structure
-- In-memory SQLite for DB tests
+- mongomock or testcontainers for DB tests
 - Mock Claude API by default (`@pytest.mark.llm` for real API tests)
 - Scenario tests verify psychological correctness (energy=1 → only MVAs, etc.)
