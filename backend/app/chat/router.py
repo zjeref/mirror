@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 
 from app.auth.service import verify_access_token
 from app.chat.engine import ConversationEngine
+from app.chat.flows.base import UserContext
 from app.chat.manager import manager
 from app.chat.schemas import ConversationResponse, MessageResponse
 from app.dependencies import get_current_user
@@ -44,6 +45,13 @@ async def chat_websocket(websocket: WebSocket, token: str = Query(...)):
 
             if msg_type == "ping":
                 await manager.send_to_connection(websocket, {"type": "pong"})
+                continue
+
+            if msg_type == "session_start":
+                context = UserContext(user_id=str(user.id), user_name=user.name)
+                greeting = await engine.session_engine.handle_session_start(context)
+                if greeting:
+                    await manager.send_to_connection(websocket, greeting)
                 continue
 
             if msg_type == "message":

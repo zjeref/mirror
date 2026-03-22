@@ -20,6 +20,7 @@ from app.chat.flows.crisis import (
     log_crisis_event,
 )
 from app.chat.flows.registry import get_flow_class
+from app.sessions.engine import SessionEngine
 
 import app.chat.flows.check_in  # noqa: F401
 import app.chat.flows.crisis  # noqa: F401
@@ -62,6 +63,7 @@ class ConversationEngine:
         self.user = user
         self.active_flows: dict[str, BaseFlow] = {}
         self._message_count: int = 0  # Track for conversation length management
+        self.session_engine = SessionEngine(user)
 
     def _build_user_context(self) -> UserContext:
         return UserContext(user_id=str(self.user.id), user_name=self.user.name)
@@ -114,7 +116,12 @@ class ConversationEngine:
                 "or text **HOME** to **741741**."
             )
 
-        # Priority 4: Active flow
+        # Priority 4: SessionEngine — protocols, screenings, homework
+        session_response = await self.session_engine.try_handle(content, context)
+        if session_response:
+            return session_response
+
+        # Priority 5: Active flow
         flow = self.active_flows.get(str(conversation.id))
         if flow and not flow.is_complete:
             result = await flow.process(content, context)
@@ -128,12 +135,12 @@ class ConversationEngine:
                     )
             return self._flow_result_to_response(result, flow, str(conversation.id))
 
-        # Priority 5: Intent detection
+        # Priority 6: Intent detection
         detected_intent = self._detect_intent(content)
         if detected_intent:
             return await self._start_flow(detected_intent, conversation, context)
 
-        # Priority 6: LLM response + state assessment
+        # Priority 7: LLM response + state assessment
         return await self._generate_smart_response(content, conversation, context)
 
     def _detect_intent(self, content: str) -> Optional[str]:
