@@ -25,6 +25,8 @@ import app.chat.flows.check_in  # noqa: F401
 import app.chat.flows.crisis  # noqa: F401
 import app.chat.flows.reframe  # noqa: F401
 import app.chat.flows.tiny_habit  # noqa: F401
+import app.chat.flows.values  # noqa: F401
+import app.chat.flows.program  # noqa: F401
 
 from app.models.check_in import CheckIn
 from app.models.conversation import Conversation, Message
@@ -43,6 +45,14 @@ INTENT_PATTERNS: dict[str, list[str]] = {
     "tiny_habit": [
         "build a habit", "new habit", "start a habit", "tiny habit",
         "create a habit",
+    ],
+    "values": [
+        "what matters", "my values", "values exploration", "explore values",
+        "what do i care about", "life purpose", "find my purpose",
+    ],
+    "program": [
+        "start a program", "belief reset", "structured program",
+        "7 day", "7-day", "daily program", "start the journey",
     ],
 }
 
@@ -166,8 +176,65 @@ class ConversationEngine:
             if msg.role in ("user", "assistant")
         ]
 
-        # Build user context from previous LLM-inferred states
+        # Build user context from values, activities, and inferred states
         user_context_parts = [f"User's name: {context.user_name}"]
+
+        # Include user's values if they've done the values flow
+        from app.models.activity import UserValues, Activity
+
+        user_values = await UserValues.find_one(UserValues.user_id == str(self.user.id))
+        if user_values and user_values.values:
+            values_str = "; ".join(
+                f"{area}: {val}" for area, val in user_values.values.items()
+            )
+            user_context_parts.append(f"User's core values: {values_str}")
+
+        # Include recent activity patterns
+        recent_activities = await Activity.find(
+            Activity.user_id == str(self.user.id),
+            Activity.completed == True,
+        ).sort("-created_at").limit(5).to_list()
+        if recent_activities:
+            act_strs = []
+            for a in recent_activities:
+                mood_delta = ""
+                if a.mood_before and a.mood_after:
+                    delta = a.mood_after - a.mood_before
+                    mood_delta = f" (mood {'+'if delta > 0 else ''}{delta:.0f})"
+                act_strs.append(f"{a.name}{mood_delta}")
+            user_context_parts.append(f"Recent activities: {', '.join(act_strs)}")
+
+        # Check for active program
+        from app.models.program import ProgramEnrollment
+        active_program = await ProgramEnrollment.find_one(
+            ProgramEnrollment.user_id == str(self.user.id),
+            ProgramEnrollment.is_active == True,
+        )
+        if active_program:
+            user_context_parts.append(
+                f"Active program: day {active_program.current_day}/{active_program.total_days} "
+                f"of {active_program.program_id}"
+            )
+
+        # Check for re-engagement (first message after absence)
+        last_msg = await Message.find(
+            Message.conversation_id == str(conversation.id),
+        ).sort("-created_at").limit(2).to_list()
+        if len(last_msg) <= 2:
+            # This might be a new conversation — check last activity across all conversations
+            from app.models.inferred_state import InferredStateRecord as ISR_check
+            last_state = await ISR_check.find(
+                ISR_check.user_id == str(self.user.id)
+            ).sort("-created_at").limit(1).to_list()
+            if last_state:
+                from datetime import timedelta
+                gap = datetime.now(timezone.utc) - last_state[0].created_at
+                if gap > timedelta(days=2):
+                    user_context_parts.append(
+                        f"RETURNING USER after {gap.days} days away. "
+                        "Welcome them warmly. NO guilt about absence. "
+                        "Reference something from their past conversations if possible."
+                    )
 
         recent_states = await InferredStateRecord.find(
             InferredStateRecord.user_id == str(self.user.id),
@@ -244,7 +311,7 @@ class ConversationEngine:
             first_person_ratio=0,
             word_count=len(content.split()),
             change_talk_score=state.get("change_talk", 0),
-            sustain_talk_score=state.get("sustain_talk", round(1 - state.get("change_talk", 0.5), 2)),
+            sustain_talk_score=state.get("sustain_talk", 0),
             stage_signals={
                 "stage": state.get("stage", ""),
                 "risk": state.get("risk", "none"),

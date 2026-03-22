@@ -9,9 +9,12 @@ from app.models.suggestion import Suggestion
 from app.models.thought_record import ThoughtRecord
 from app.models.user import User
 from app.models.journal import JournalEntry
+from app.models.activity import Activity, UserValues
+from app.models.program import ProgramEnrollment
 
 __all__ = [
-    "CheckIn", "Conversation", "DetectedPattern", "EnergyReading",
+    "Activity", "CheckIn", "Conversation", "DetectedPattern", "EnergyReading",
     "Habit", "HabitLog", "JournalEntry", "LifeAreaScore", "Message",
-    "Suggestion", "ThoughtRecord", "User", "init_db", "close_db",
+    "ProgramEnrollment", "Suggestion", "ThoughtRecord", "User", "UserValues",
+    "init_db", "close_db",
 ]
