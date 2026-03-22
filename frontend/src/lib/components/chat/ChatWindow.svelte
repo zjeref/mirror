@@ -76,22 +76,22 @@
 
 <div class="flex flex-col h-full chat-gradient">
 	<!-- Header -->
-	<header class="flex justify-between items-center px-8 py-4 bg-[var(--color-surface)]/70 backdrop-blur-xl border-b border-[var(--color-outline-variant)]/10">
-		<div class="flex items-center gap-3">
+	<header class="flex justify-between items-center px-4 md:px-8 py-3 md:py-4 bg-[var(--color-surface)]/70 backdrop-blur-xl border-b border-[var(--color-outline-variant)]/10">
+		<div class="flex items-center gap-2 md:gap-3">
 			<span class="material-symbols-outlined text-[var(--color-tertiary)]">flare</span>
-			<span class="text-xl font-bold bg-gradient-to-br from-indigo-300 to-indigo-500 bg-clip-text text-transparent tracking-tight">Mirror</span>
+			<span class="text-lg md:text-xl font-bold bg-gradient-to-br from-indigo-300 to-indigo-500 bg-clip-text text-transparent tracking-tight">Mirror</span>
 		</div>
-		<div class="flex items-center gap-4">
-			<div class="flex items-center gap-2 bg-[var(--color-surface-low)] px-3 py-1.5 rounded-full border border-[var(--color-outline-variant)]/10">
-				<span class="w-2 h-2 rounded-full {$connected ? 'bg-[var(--color-tertiary)] ember-glow animate-pulse' : 'bg-[var(--color-outline)]'}"></span>
-				<span class="text-xs font-medium text-[var(--color-on-surface-variant)]">{$connected ? 'Connected' : 'Connecting...'}</span>
+		<div class="flex items-center gap-2 md:gap-4">
+			<div class="flex items-center gap-1.5 bg-[var(--color-surface-low)] px-2.5 py-1 md:px-3 md:py-1.5 rounded-full border border-[var(--color-outline-variant)]/10">
+				<span class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full {$connected ? 'bg-[var(--color-tertiary)] ember-glow animate-pulse' : 'bg-[var(--color-outline)]'}"></span>
+				<span class="text-[10px] md:text-xs font-medium text-[var(--color-on-surface-variant)]">{$connected ? 'Connected' : 'Connecting...'}</span>
 			</div>
 			<button
 				onclick={handleNewChat}
 				class="text-xs text-[var(--color-outline)] hover:text-[var(--color-primary)] transition-colors flex items-center gap-1"
 			>
 				<span class="material-symbols-outlined text-sm">add</span>
-				New chat
+				<span class="hidden sm:inline">New chat</span>
 			</button>
 		</div>
 	</header>
@@ -149,7 +149,7 @@
 	{/if}
 
 	<!-- Input -->
-	<footer class="px-6 md:px-24 pb-8 pt-4 bg-gradient-to-t from-[var(--color-surface)] to-transparent">
+	<footer class="px-4 md:px-24 pb-4 md:pb-8 pt-3 md:pt-4 bg-gradient-to-t from-[var(--color-surface)] to-transparent">
 		<div class="relative group">
 			<div class="absolute inset-0 bg-[var(--color-tertiary)]/5 blur-xl rounded-full opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
 			<div class="relative flex items-center bg-[var(--color-surface-low)] border-2 border-[var(--color-tertiary)]/20 focus-within:border-[var(--color-tertiary)]/50 transition-all duration-300 rounded-full px-6 py-3">
@@ -170,7 +170,7 @@
 				</button>
 			</div>
 		</div>
-		<p class="text-center mt-4 text-[10px] text-[var(--color-on-surface-variant)]/30 tracking-widest uppercase">
+		<p class="hidden md:block text-center mt-4 text-[10px] text-[var(--color-on-surface-variant)]/30 tracking-widest uppercase">
 			Your private sanctuary
 		</p>
 	</footer>

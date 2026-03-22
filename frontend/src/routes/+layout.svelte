@@ -25,7 +25,7 @@
 	{#if showNav}
 		<Nav />
 	{/if}
-	<main class="flex-1 overflow-hidden">
+	<main class="flex-1 overflow-hidden {showNav ? 'pb-16 md:pb-0' : ''}">
 		{@render children()}
 	</main>
 </div>
