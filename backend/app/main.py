@@ -10,7 +10,17 @@ from app.models.base import init_db, close_db
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+
+    if settings.environment != "test":
+        from app.tasks.scheduler import start_scheduler, stop_scheduler
+        start_scheduler()
+
     yield
+
+    if settings.environment != "test":
+        from app.tasks.scheduler import stop_scheduler
+        stop_scheduler()
+
     await close_db()
 
 

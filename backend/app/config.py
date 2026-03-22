@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     bedrock_model: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 
+    # VAPID (Web Push)
+    vapid_private_key: str = ""
+    vapid_public_key: str = ""
+    vapid_email: str = "mailto:admin@mirror.app"
+
     # App
     environment: str = "development"
     app_name: str = "Mirror"
