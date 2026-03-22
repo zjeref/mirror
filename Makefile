@@ -1,28 +1,21 @@
-.PHONY: dev test migrate lint setup
+PYTHON ?= /home/davion/anaconda3/envs/evi-env/bin/python
 
-# Backend
+.PHONY: dev test test-quick lint format setup
+
 dev:
-	cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && $(PYTHON) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 test:
-	cd backend && python -m pytest tests/ -v --cov=app
+	cd backend && $(PYTHON) -m pytest tests/ -v
 
 test-quick:
-	cd backend && python -m pytest tests/ -x -q
-
-migrate:
-	cd backend && alembic upgrade head
-
-migration:
-	cd backend && alembic revision --autogenerate -m "$(msg)"
+	cd backend && $(PYTHON) -m pytest tests/ -x -q
 
 lint:
-	cd backend && ruff check app/ tests/
+	cd backend && $(PYTHON) -m ruff check app/ tests/
 
 format:
-	cd backend && ruff format app/ tests/
+	cd backend && $(PYTHON) -m ruff format app/ tests/
 
-# Setup
 setup:
-	cd backend && pip install -e ".[dev]"
-	mkdir -p data
+	cd backend && $(PYTHON) -m pip install -e ".[dev]"

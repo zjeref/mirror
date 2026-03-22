@@ -4,15 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.models.base import init_db
+from app.models.base import init_db, close_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize database
-    init_db()
+    await init_db()
     yield
-    # Shutdown: cleanup if needed
+    await close_db()
 
 
 def create_app() -> FastAPI:
@@ -22,15 +21,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    origins = [o.strip() for o in settings.cors_origins.split(",")]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],  # SvelteKit dev
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # Register routers
     from app.auth.router import router as auth_router
     from app.chat.router import router as chat_router
     from app.dashboard.router import router as dashboard_router

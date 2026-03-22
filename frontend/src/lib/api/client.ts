@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 interface FetchOptions extends RequestInit {
 	params?: Record<string, string>;
@@ -178,6 +178,12 @@ class ApiClient {
 	// WebSocket
 	getWsUrl(): string {
 		const token = this.getToken();
+		if (API_BASE.startsWith('http')) {
+			// Production: convert http(s) URL to ws(s)
+			const wsBase = API_BASE.replace(/^http/, 'ws');
+			return `${wsBase}/chat/ws?token=${token}`;
+		}
+		// Dev: use current host with proxy
 		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 		return `${protocol}//${window.location.host}/api/chat/ws?token=${token}`;
 	}

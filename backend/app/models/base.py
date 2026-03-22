@@ -1,55 +1,50 @@
-import uuid
-from datetime import datetime
-from typing import Optional
+"""MongoDB connection and document initialization via Beanie."""
 
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from beanie import init_beanie
+from motor.motor_asyncio import AsyncIOMotorClient
 
+from app.config import settings
 
-class Base(DeclarativeBase):
-    pass
+_client = None
 
 
-class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+async def init_db():
+    """Initialize MongoDB connection and Beanie ODM."""
+    global _client
+
+    from app.models.user import User
+    from app.models.conversation import Conversation, Message
+    from app.models.check_in import CheckIn
+    from app.models.thought_record import ThoughtRecord
+    from app.models.habit import Habit, HabitLog
+    from app.models.suggestion import Suggestion
+    from app.models.life_area import LifeAreaScore
+    from app.models.pattern import DetectedPattern
+    from app.models.energy import EnergyReading
+
+    _client = AsyncIOMotorClient(settings.mongodb_url)
+    db = _client[settings.mongodb_db_name]
+
+    await init_beanie(
+        database=db,
+        document_models=[
+            User,
+            Conversation,
+            Message,
+            CheckIn,
+            ThoughtRecord,
+            Habit,
+            HabitLog,
+            Suggestion,
+            LifeAreaScore,
+            DetectedPattern,
+            EnergyReading,
+        ],
+    )
 
 
-def make_uuid() -> str:
-    return str(uuid.uuid4())
-
-
-# Lazy engine/session - initialized on first use
-_engine = None
-_SessionLocal = None
-
-
-def get_engine():
-    global _engine
-    if _engine is None:
-        from app.config import settings
-
-        connect_args = {"check_same_thread": False} if settings.is_sqlite else {}
-        _engine = create_engine(settings.database_url, connect_args=connect_args)
-    return _engine
-
-
-def get_session_factory():
-    global _SessionLocal
-    if _SessionLocal is None:
-        _SessionLocal = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
-    return _SessionLocal
-
-
-def init_db(engine=None):
-    """Create all tables. Used in dev/testing. Production uses Alembic."""
-    target_engine = engine or get_engine()
-    Base.metadata.create_all(bind=target_engine)
-
-
-def get_session():
-    session = get_session_factory()()
-    try:
-        yield session
-    finally:
-        session.close()
+async def close_db():
+    global _client
+    if _client:
+        _client.close()
+        _client = None

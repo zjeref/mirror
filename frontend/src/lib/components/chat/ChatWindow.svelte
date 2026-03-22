@@ -13,10 +13,17 @@
 	const isTyping = chat.isTyping;
 	const connected = chat.connected;
 	const activeFlow = chat.activeFlow;
+	const historyLoaded = chat.historyLoaded;
 
-	onMount(() => {
+	onMount(async () => {
+		// Load conversation history from DB first
+		if (!$historyLoaded) {
+			await chat.loadHistory();
+		}
+		// Then connect WebSocket
 		chat.connect();
-		return () => chat.disconnect();
+
+		return () => chat.pause(); // Pause, don't destroy
 	});
 
 	// Auto-scroll to bottom
@@ -52,6 +59,10 @@
 		chat.sendMessage(String(value));
 	}
 
+	function handleNewChat() {
+		chat.startNewConversation();
+	}
+
 	// Get the last flow prompt from messages
 	const lastFlowPrompt = $derived(
 		(() => {
@@ -66,15 +77,35 @@
 </script>
 
 <div class="flex flex-col h-full">
-	<!-- Connection status -->
-	{#if !$connected}
-		<div class="bg-amber-500/20 text-amber-300 text-xs text-center py-1.5">
-			Connecting...
-		</div>
-	{/if}
+	<!-- Header -->
+	<div class="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)]">
+		<span class="text-sm text-slate-400">
+			{#if !$connected}
+				Connecting...
+			{:else}
+				Connected
+			{/if}
+		</span>
+		<button
+			onclick={handleNewChat}
+			class="text-xs text-slate-500 hover:text-indigo-400 transition-colors"
+		>
+			+ New chat
+		</button>
+	</div>
 
 	<!-- Messages -->
 	<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-4">
+		{#if !$historyLoaded}
+			<div class="flex justify-center py-8">
+				<p class="text-sm text-slate-500">Loading history...</p>
+			</div>
+		{:else if $messages.length === 0 && $connected}
+			<div class="flex justify-center py-8">
+				<p class="text-sm text-slate-500">Start a conversation with Mirror</p>
+			</div>
+		{/if}
+
 		{#each $messages as message (message.timestamp + message.content.slice(0, 20))}
 			<MessageBubble {message} />
 		{/each}

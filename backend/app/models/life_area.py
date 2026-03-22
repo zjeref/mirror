@@ -1,20 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import Base, TimestampMixin, make_uuid
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class LifeAreaScore(Base, TimestampMixin):
-    __tablename__ = "life_area_scores"
+class LifeAreaScore(Document):
+    user_id: Indexed(str)
+    area: str  # physical | mental | career | habits
+    score: float  # 0.0 - 10.0
+    scored_at: datetime
+    source: str  # check_in | self_assessment | inferred
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=make_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    area: Mapped[str] = mapped_column(String(50))  # physical | mental | career | habits
-    score: Mapped[float] = mapped_column(Float)  # 0.0 - 10.0
-    scored_at: Mapped[datetime] = mapped_column(DateTime)
-    source: Mapped[str] = mapped_column(String(50))  # check_in | self_assessment | inferred
-
-    def __repr__(self) -> str:
-        return f"<LifeAreaScore {self.area}={self.score}>"
+    class Settings:
+        name = "life_area_scores"

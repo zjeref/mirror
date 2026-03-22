@@ -17,6 +17,8 @@ function createAuthStore() {
 		},
 		logout() {
 			if (browser) {
+				// Clear chat state
+				import('$lib/stores/chat').then(({ chat }) => chat.logout());
 				localStorage.removeItem('access_token');
 				localStorage.removeItem('refresh_token');
 			}

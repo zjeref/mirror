@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import { api } from '$lib/api/client';
 
 export interface ChatMessage {
@@ -19,14 +20,45 @@ export interface FlowPrompt {
 	max_val?: number;
 }
 
+const CONVO_KEY = 'mirror_conversation_id';
+
 function createChatStore() {
 	const messages = writable<ChatMessage[]>([]);
 	const connected = writable(false);
-	const conversationId = writable<string | null>(null);
+	const conversationId = writable<string | null>(
+		browser ? localStorage.getItem(CONVO_KEY) : null
+	);
 	const activeFlow = writable<{ flowId: string; step: string } | null>(null);
 	const isTyping = writable(false);
+	const historyLoaded = writable(false);
 
 	let ws: WebSocket | null = null;
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+	async function loadHistory() {
+		const convoId = get(conversationId);
+		if (!convoId) {
+			historyLoaded.set(true);
+			return;
+		}
+
+		try {
+			const msgs = await api.getMessages(convoId, 50);
+			const chatMsgs: ChatMessage[] = msgs.map((m: any) => ({
+				id: m.id,
+				role: m.role as 'user' | 'assistant',
+				content: m.content,
+				timestamp: m.created_at,
+			}));
+			messages.set(chatMsgs);
+		} catch {
+			// Conversation might not exist anymore, start fresh
+			localStorage.removeItem(CONVO_KEY);
+			conversationId.set(null);
+			messages.set([]);
+		}
+		historyLoaded.set(true);
+	}
 
 	function connect() {
 		if (ws?.readyState === WebSocket.OPEN) return;
@@ -45,10 +77,12 @@ function createChatStore() {
 
 		ws.onclose = () => {
 			connected.set(false);
-			// Reconnect after 3 seconds
-			setTimeout(() => {
-				const token = localStorage.getItem('access_token');
-				if (token) connect();
+			// Reconnect if user is still authenticated
+			if (reconnectTimer) clearTimeout(reconnectTimer);
+			reconnectTimer = setTimeout(() => {
+				if (browser && localStorage.getItem('access_token')) {
+					connect();
+				}
 			}, 3000);
 		};
 
@@ -69,17 +103,21 @@ function createChatStore() {
 				timestamp: data.timestamp || new Date().toISOString(),
 			};
 
-			// Check for flow prompt
 			if (data.flow_prompt) {
 				msg.flowPrompt = data.flow_prompt;
 			}
 
 			messages.update((msgs) => [...msgs, msg]);
 
-			// Update conversation state
+			// Persist conversation ID
 			if (data.metadata?.conversation_id) {
-				conversationId.set(data.metadata.conversation_id);
+				const convoId = data.metadata.conversation_id;
+				conversationId.set(convoId);
+				if (browser) {
+					localStorage.setItem(CONVO_KEY, convoId);
+				}
 			}
+
 			if (data.metadata?.flow_active !== undefined) {
 				if (data.metadata.flow_active && data.flow_prompt) {
 					activeFlow.set({
@@ -116,7 +154,6 @@ function createChatStore() {
 	function sendFlowResponse(flowId: string, step: string, value: any) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-		// Show user's response as a message
 		const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
 		const msg: ChatMessage = {
 			role: 'user',
@@ -135,13 +172,31 @@ function createChatStore() {
 		);
 	}
 
-	function disconnect() {
+	function pause() {
+		// Called when navigating away - close WS but KEEP messages and conversationId
+		if (reconnectTimer) clearTimeout(reconnectTimer);
+		reconnectTimer = null;
 		ws?.close();
 		ws = null;
 		connected.set(false);
+	}
+
+	function logout() {
+		// Full reset - only on logout
+		pause();
 		messages.set([]);
 		conversationId.set(null);
 		activeFlow.set(null);
+		historyLoaded.set(false);
+		if (browser) localStorage.removeItem(CONVO_KEY);
+	}
+
+	function startNewConversation() {
+		messages.set([]);
+		conversationId.set(null);
+		activeFlow.set(null);
+		historyLoaded.set(true);
+		if (browser) localStorage.removeItem(CONVO_KEY);
 	}
 
 	return {
@@ -150,10 +205,14 @@ function createChatStore() {
 		conversationId,
 		activeFlow,
 		isTyping,
+		historyLoaded,
 		connect,
+		loadHistory,
 		sendMessage,
 		sendFlowResponse,
-		disconnect,
+		pause,
+		logout,
+		startNewConversation,
 	};
 }
 

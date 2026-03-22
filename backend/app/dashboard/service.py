@@ -1,19 +1,10 @@
-"""Dashboard service - aggregation queries for dashboard data."""
+"""Dashboard service - aggregation queries for MongoDB."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from app.dashboard.schemas import (
-    DashboardSummary,
-    HabitSummary,
-    LifeAreaPoint,
-    MoodPoint,
-    MoodTrendResponse,
-    PatternSummary,
-    SuggestionSummary,
+    DashboardSummary, HabitSummary, LifeAreaPoint,
+    MoodPoint, MoodTrendResponse, PatternSummary, SuggestionSummary,
 )
 from app.models.check_in import CheckIn
 from app.models.habit import Habit
@@ -23,73 +14,44 @@ from app.models.user import User
 from app.psychology.life_areas import calculate_life_area_scores
 
 
-def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
-    """Build the complete dashboard summary for a user."""
+async def get_dashboard_summary(user: User) -> DashboardSummary:
     now = datetime.now(timezone.utc)
+    user_id = str(user.id)
 
-    # Latest check-in
-    latest_checkin = (
-        db.query(CheckIn)
-        .filter(CheckIn.user_id == user.id)
-        .order_by(CheckIn.created_at.desc())
-        .first()
-    )
+    latest_checkin = await CheckIn.find(
+        CheckIn.user_id == user_id
+    ).sort("-created_at").first_or_none()
 
-    # Mood data points (last 30 days)
-    mood_data = get_mood_trend(db, user.id, days=30)
+    mood_data = await get_mood_trend(user_id, days=30)
 
-    # Energy average (7 days)
     week_ago = now - timedelta(days=7)
-    recent_checkins = (
-        db.query(CheckIn)
-        .filter(CheckIn.user_id == user.id, CheckIn.created_at >= week_ago)
-        .all()
-    )
+    recent_checkins = await CheckIn.find(
+        CheckIn.user_id == user_id,
+        CheckIn.created_at >= week_ago,
+    ).to_list()
+
     energy_scores = [c.energy_score for c in recent_checkins if c.energy_score]
     avg_energy = round(sum(energy_scores) / len(energy_scores), 1) if energy_scores else None
 
-    # Life area scores
-    area_snapshots = calculate_life_area_scores(db, user.id)
+    area_snapshots = await calculate_life_area_scores(user_id)
     life_areas = [
-        LifeAreaPoint(
-            area=s.area,
-            score=s.score,
-            trend=s.trend,
-            data_points=s.data_points,
-        )
+        LifeAreaPoint(area=s.area, score=s.score, trend=s.trend, data_points=s.data_points)
         for s in area_snapshots
     ]
 
-    # Active habits
-    habits = (
-        db.query(Habit)
-        .filter(Habit.user_id == user.id, Habit.is_active == True)
-        .all()
-    )
+    habits = await Habit.find(Habit.user_id == user_id, Habit.is_active == True).to_list()
     habit_summaries = [
-        HabitSummary(
-            id=h.id,
-            name=h.name,
-            streak=h.current_streak,
-            total_completions=h.total_completions,
-            is_active=h.is_active,
-        )
+        HabitSummary(id=str(h.id), name=h.name, streak=h.current_streak,
+                     total_completions=h.total_completions, is_active=h.is_active)
         for h in habits
     ]
 
-    # Recent patterns
-    patterns = (
-        db.query(DetectedPattern)
-        .filter(DetectedPattern.user_id == user.id, DetectedPattern.is_active == True)
-        .order_by(DetectedPattern.confidence.desc())
-        .limit(5)
-        .all()
-    )
+    patterns = await DetectedPattern.find(
+        DetectedPattern.user_id == user_id, DetectedPattern.is_active == True
+    ).sort("-confidence").limit(5).to_list()
     pattern_summaries = [
         PatternSummary(
-            id=p.id,
-            pattern_type=p.pattern_type,
-            description=p.description,
+            id=str(p.id), pattern_type=p.pattern_type, description=p.description,
             confidence=p.confidence,
             actionable_insight=p.evidence.get("actionable_insight") if p.evidence else None,
             created_at=p.created_at,
@@ -97,56 +59,37 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         for p in patterns
     ]
 
-    # Pending suggestions
-    pending = (
-        db.query(Suggestion)
-        .filter(Suggestion.user_id == user.id, Suggestion.status == "pending")
-        .order_by(Suggestion.created_at.desc())
-        .limit(3)
-        .all()
-    )
+    pending = await Suggestion.find(
+        Suggestion.user_id == user_id, Suggestion.status == "pending"
+    ).sort("-created_at").limit(3).to_list()
     suggestion_summaries = [
         SuggestionSummary(
-            id=s.id,
-            content=s.content,
-            strategy_type=s.strategy_type,
-            life_area=s.life_area,
-            energy_required=s.energy_required,
-            status=s.status,
-            effectiveness_rating=s.effectiveness_rating,
+            id=str(s.id), content=s.content, strategy_type=s.strategy_type,
+            life_area=s.life_area, energy_required=s.energy_required,
+            status=s.status, effectiveness_rating=s.effectiveness_rating,
             created_at=s.created_at,
         )
         for s in pending
     ]
 
-    # Suggestion effectiveness (% of completed suggestions rated 3+/5)
-    completed_suggestions = (
-        db.query(Suggestion)
-        .filter(
-            Suggestion.user_id == user.id,
-            Suggestion.status == "completed",
-            Suggestion.effectiveness_rating.isnot(None),
-        )
-        .all()
-    )
+    completed_suggestions = await Suggestion.find(
+        Suggestion.user_id == user_id,
+        Suggestion.status == "completed",
+        Suggestion.effectiveness_rating != None,
+    ).to_list()
+    effectiveness = None
     if completed_suggestions:
         good = sum(1 for s in completed_suggestions if s.effectiveness_rating >= 3)
         effectiveness = round(good / len(completed_suggestions), 2)
-    else:
-        effectiveness = None
 
-    # Days active
-    first_checkin = (
-        db.query(CheckIn)
-        .filter(CheckIn.user_id == user.id)
-        .order_by(CheckIn.created_at.asc())
-        .first()
-    )
+    first_checkin = await CheckIn.find(
+        CheckIn.user_id == user_id
+    ).sort("created_at").first_or_none()
     days_active = 0
     if first_checkin:
         days_active = (now - first_checkin.created_at.replace(tzinfo=timezone.utc)).days + 1
 
-    total_checkins = db.query(CheckIn).filter(CheckIn.user_id == user.id).count()
+    total_checkins = await CheckIn.find(CheckIn.user_id == user_id).count()
 
     return DashboardSummary(
         current_mood=latest_checkin.mood_score if latest_checkin else None,
@@ -165,45 +108,28 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     )
 
 
-def get_mood_trend(db: Session, user_id: str, days: int = 30) -> MoodTrendResponse:
-    """Get mood trend data for charting."""
+async def get_mood_trend(user_id: str, days: int = 30) -> MoodTrendResponse:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    check_ins = (
-        db.query(CheckIn)
-        .filter(CheckIn.user_id == user_id, CheckIn.created_at >= cutoff)
-        .order_by(CheckIn.created_at.asc())
-        .all()
-    )
+    check_ins = await CheckIn.find(
+        CheckIn.user_id == user_id,
+        CheckIn.created_at >= cutoff,
+    ).sort("created_at").to_list()
 
     data_points = [
-        MoodPoint(
-            date=c.created_at.strftime("%Y-%m-%d"),
-            score=c.mood_score,
-        )
+        MoodPoint(date=c.created_at.strftime("%Y-%m-%d"), score=c.mood_score)
         for c in check_ins
     ]
 
     scores = [c.mood_score for c in check_ins]
     average = round(sum(scores) / len(scores), 1) if scores else None
 
-    # Trend: compare first half vs second half
     trend = None
     if len(scores) >= 4:
         mid = len(scores) // 2
         first_half = sum(scores[:mid]) / mid
         second_half = sum(scores[mid:]) / (len(scores) - mid)
         diff = second_half - first_half
-        if diff >= 0.5:
-            trend = "improving"
-        elif diff <= -0.5:
-            trend = "declining"
-        else:
-            trend = "stable"
+        trend = "improving" if diff >= 0.5 else "declining" if diff <= -0.5 else "stable"
 
-    return MoodTrendResponse(
-        data_points=data_points,
-        period_days=days,
-        average=average,
-        trend=trend,
-    )
+    return MoodTrendResponse(data_points=data_points, period_days=days, average=average, trend=trend)

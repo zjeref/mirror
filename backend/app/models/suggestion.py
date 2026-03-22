@@ -1,25 +1,21 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import Base, TimestampMixin, make_uuid
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class Suggestion(Base, TimestampMixin):
-    __tablename__ = "suggestions"
+class Suggestion(Document):
+    user_id: Indexed(str)
+    strategy_type: str  # cbt_reframe | tiny_habit | mva | pattern_insight
+    life_area: str
+    content: str
+    rationale: Optional[str] = None
+    energy_required: int  # 1-10
+    status: str = "pending"  # pending | accepted | rejected | completed
+    effectiveness_rating: Optional[int] = None  # 1-5
+    responded_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=make_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    strategy_type: Mapped[str] = mapped_column(String(50))  # cbt_reframe | tiny_habit | mva | pattern_insight
-    life_area: Mapped[str] = mapped_column(String(50))
-    content: Mapped[str] = mapped_column(Text)
-    rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    energy_required: Mapped[int] = mapped_column(Integer)  # 1-10
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | accepted | rejected | completed
-    effectiveness_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1-5
-    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    def __repr__(self) -> str:
-        return f"<Suggestion [{self.strategy_type}] energy={self.energy_required}>"
+    class Settings:
+        name = "suggestions"

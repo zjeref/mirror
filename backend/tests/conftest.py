@@ -1,97 +1,87 @@
+import os
+import asyncio
+
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+import pytest_asyncio
+from beanie import init_beanie
+from mongomock_motor import AsyncMongoMockClient
+from httpx import AsyncClient, ASGITransport
 
 from app.auth.service import create_access_token, hash_password
-from app.models.base import Base, get_session
 from app.models.user import User
+from app.models.conversation import Conversation, Message
+from app.models.check_in import CheckIn
+from app.models.thought_record import ThoughtRecord
+from app.models.habit import Habit, HabitLog
+from app.models.suggestion import Suggestion
+from app.models.life_area import LifeAreaScore
+from app.models.pattern import DetectedPattern
+from app.models.energy import EnergyReading
 
-# Import all models to ensure they're registered with Base.metadata
-import app.models.conversation  # noqa: F401
-import app.models.check_in  # noqa: F401
-import app.models.thought_record  # noqa: F401
-import app.models.habit  # noqa: F401
-import app.models.suggestion  # noqa: F401
-import app.models.life_area  # noqa: F401
-import app.models.pattern  # noqa: F401
-import app.models.energy  # noqa: F401
-
-
-# Create a test engine that all tests share
-test_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestSession = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+ALL_MODELS = [
+    User, Conversation, Message, CheckIn, ThoughtRecord,
+    Habit, HabitLog, Suggestion, LifeAreaScore, DetectedPattern, EnergyReading,
+]
 
 
-@pytest.fixture(autouse=True)
-def setup_db():
-    """Create all tables before each test, drop after."""
-    Base.metadata.create_all(bind=test_engine)
+@pytest_asyncio.fixture(autouse=True)
+async def setup_db():
+    """Initialize Beanie with mongomock for each test."""
+    # Disable LLM in tests
+    from app.config import settings
+    settings.anthropic_api_key = ""
+
+    client = AsyncMongoMockClient()
+    db = client["mirror_test"]
+    await init_beanie(database=db, document_models=ALL_MODELS)
     yield
-    Base.metadata.drop_all(bind=test_engine)
+    # Drop all collections after test
+    for model in ALL_MODELS:
+        await model.find_all().delete()
+    client.close()
 
 
-@pytest.fixture
-def db():
-    session = TestSession()
-    try:
-        yield session
-    finally:
-        session.rollback()
-        session.close()
-
-
-def override_get_session():
-    session = TestSession()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def client():
-    # Patch init_db to use test engine
-    import app.models.base as base_mod
-    original_init = base_mod.init_db
-    base_mod.init_db = lambda engine=None: None  # no-op, setup_db handles it
-
-    from app.main import create_app
-    test_app = create_app()
-    test_app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(test_app) as c:
-        yield c
-
-    test_app.dependency_overrides.clear()
-    base_mod.init_db = original_init
-
-
-@pytest.fixture
-def test_user(db: Session) -> User:
+@pytest_asyncio.fixture
+async def test_user() -> User:
     user = User(
         email="test@mirror.app",
         name="Test User",
         password_hash=hash_password("testpassword123"),
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    await user.insert()
     return user
 
 
 @pytest.fixture
 def auth_headers(test_user: User) -> dict:
-    token = create_access_token(test_user.id)
+    token = create_access_token(str(test_user.id))
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture
-def auth_client(client, auth_headers):
-    client.headers.update(auth_headers)
+@pytest_asyncio.fixture
+async def client():
+    """Async test client with mongomock DB."""
+    import app.models.base as base_mod
+
+    # Patch init_db/close_db to no-op (setup_db handles it)
+    original_init = base_mod.init_db
+    original_close = base_mod.close_db
+    base_mod.init_db = lambda: asyncio.sleep(0)
+    base_mod.close_db = lambda: asyncio.sleep(0)
+
+    from app.main import create_app
+    test_app = create_app()
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    base_mod.init_db = original_init
+    base_mod.close_db = original_close
+
+
+@pytest_asyncio.fixture
+async def auth_client(client: AsyncClient, test_user: User):
+    token = create_access_token(str(test_user.id))
+    client.headers["Authorization"] = f"Bearer {token}"
     return client

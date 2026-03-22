@@ -3,8 +3,6 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy.orm import Session
-
 from app.chat.flows.base import BaseFlow, FlowResult, UserContext
 from app.chat.flows.crisis import contains_crisis_keywords
 from app.chat.flows.registry import get_flow_class
@@ -18,9 +16,6 @@ import app.chat.flows.tiny_habit  # noqa: F401
 from app.models.check_in import CheckIn
 from app.models.conversation import Conversation, Message
 from app.models.user import User
-from app.psychology.cbt import detect_distortions
-from app.psychology.energy import get_mva, get_validation
-from app.psychology.suggestions import UserState, suggest
 
 
 # Intent detection patterns
@@ -45,180 +40,116 @@ INTENT_PATTERNS: dict[str, list[str]] = {
 class ConversationEngine:
     """Orchestrates chat: routes to flows, detects intent, generates responses."""
 
-    def __init__(self, db: Session, user: User):
-        self.db = db
+    def __init__(self, user: User):
         self.user = user
-        self.active_flows: dict[str, BaseFlow] = {}  # conversation_id -> active flow
+        self.active_flows: dict[str, BaseFlow] = {}
 
     def _build_user_context(self) -> UserContext:
-        return UserContext(
-            user_id=self.user.id,
-            user_name=self.user.name,
-        )
+        return UserContext(user_id=str(self.user.id), user_name=self.user.name)
 
     async def handle_message(
-        self,
-        content: str,
-        conversation_id: Optional[str] = None,
+        self, content: str, conversation_id: Optional[str] = None,
     ) -> dict:
-        """Process an incoming user message and generate a response."""
-        conversation = self._get_or_create_conversation(conversation_id)
+        conversation = await self._get_or_create_conversation(conversation_id)
         context = self._build_user_context()
 
-        # Save user message
-        user_msg = Message(
-            conversation_id=conversation.id,
-            role="user",
-            content=content,
-        )
-        self.db.add(user_msg)
-        self.db.commit()
+        user_msg = Message(conversation_id=str(conversation.id), role="user", content=content)
+        await user_msg.insert()
 
-        # Route to active flow or detect intent
         response = await self._route_message(content, conversation, context)
 
-        # Save assistant message
         assistant_msg = Message(
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
             role="assistant",
             content=response["content"],
             metadata_=response.get("metadata"),
         )
-        self.db.add(assistant_msg)
-        self.db.commit()
+        await assistant_msg.insert()
 
         response["metadata"] = response.get("metadata", {})
-        response["metadata"]["conversation_id"] = conversation.id
+        response["metadata"]["conversation_id"] = str(conversation.id)
         return response
-
-    async def handle_flow_response(
-        self,
-        conversation_id: str,
-        flow_id: str,
-        step: str,
-        value: Any,
-    ) -> dict:
-        """Handle a structured flow response."""
-        conversation = self._get_or_create_conversation(conversation_id)
-        context = self._build_user_context()
-
-        flow = self.active_flows.get(conversation_id)
-        if not flow or flow.flow_id != flow_id:
-            return self._make_response("That flow isn't active. Let's start fresh.")
-
-        result = await flow.process(value, context)
-
-        if flow.is_complete:
-            self._on_flow_complete(flow, conversation)
-            del self.active_flows[conversation_id]
-
-        return self._flow_result_to_response(result, flow, conversation.id)
 
     async def _route_message(
         self, content: str, conversation: Conversation, context: UserContext
     ) -> dict:
-        """Route message to the appropriate handler."""
-
-        # Priority 1: Crisis detection (ALWAYS first)
         if contains_crisis_keywords(content):
             return await self._start_flow("crisis", conversation, context)
 
-        # Priority 2: Active flow
-        flow = self.active_flows.get(conversation.id)
+        flow = self.active_flows.get(str(conversation.id))
         if flow and not flow.is_complete:
             result = await flow.process(content, context)
             if flow.is_complete:
-                self._on_flow_complete(flow, conversation)
-                del self.active_flows[conversation.id]
-            return self._flow_result_to_response(result, flow, conversation.id)
+                await self._on_flow_complete(flow, conversation)
+                del self.active_flows[str(conversation.id)]
+            return self._flow_result_to_response(result, flow, str(conversation.id))
 
-        # Priority 3: Intent detection
         detected_intent = self._detect_intent(content)
         if detected_intent:
             return await self._start_flow(detected_intent, conversation, context)
 
-        # Priority 4: Psychology-informed response
-        return self._generate_smart_response(content, context)
+        return await self._generate_smart_response(content, conversation, context)
 
     def _detect_intent(self, content: str) -> Optional[str]:
-        """Detect user intent from message content."""
         content_lower = content.lower()
-
         for intent, patterns in INTENT_PATTERNS.items():
             for pattern in patterns:
                 if pattern in content_lower:
                     return intent
-
         return None
 
     async def _start_flow(
         self, flow_id: str, conversation: Conversation, context: UserContext
     ) -> dict:
-        """Start a new structured flow."""
         flow_class = get_flow_class(flow_id)
         if not flow_class:
             return self._make_response("I don't recognize that flow.")
 
         flow = flow_class()
         result = await flow.start(context)
-
         if not flow.is_complete:
-            self.active_flows[conversation.id] = flow
+            self.active_flows[str(conversation.id)] = flow
+        return self._flow_result_to_response(result, flow, str(conversation.id))
 
-        return self._flow_result_to_response(result, flow, conversation.id)
+    async def _generate_smart_response(
+        self, content: str, conversation: Conversation, context: UserContext
+    ) -> dict:
+        from app.chat.llm.client import generate_response
 
-    def _generate_smart_response(self, content: str, context: UserContext) -> dict:
-        """Generate a psychology-informed response for freeform messages."""
-        content_lower = content.lower()
+        recent_messages = await Message.find(
+            Message.conversation_id == str(conversation.id)
+        ).sort("-created_at").limit(20).to_list()
+        recent_messages.reverse()
 
-        # Check for low energy signals
-        low_energy_phrases = [
-            "no energy", "exhausted", "can't do anything", "too tired",
-            "burned out", "burnout", "can't get up", "so tired",
-            "don't have the energy", "drained",
+        history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in recent_messages
+            if msg.role in ("user", "assistant")
         ]
-        if any(phrase in content_lower for phrase in low_energy_phrases):
-            mva = get_mva("physical", 2)
-            return self._make_response(
-                f"{mva.validation}\n\n"
-                f"If you want to do one tiny thing: {mva.action}\n\n"
-                f"But honestly, just resting is valid too."
-            )
 
-        # Check for cognitive distortions
-        distortions = detect_distortions(content)
-        if distortions and distortions[0].confidence >= 0.6:
-            top = distortions[0]
-            return self._make_response(
-                f"I notice something in what you said — it sounds like it might be "
-                f"**{top.display_name}**: {top.explanation}\n\n"
-                f"Want to work through this with a thought reframing exercise? "
-                f"Just say 'reframe' and we'll do it together."
-            )
+        user_context_parts = [f"User's name: {context.user_name}"]
+        latest_checkin = await CheckIn.find(
+            CheckIn.user_id == str(self.user.id)
+        ).sort("-created_at").first_or_none()
 
-        # Check for overwhelm
-        overwhelm_phrases = [
-            "overwhelmed", "too much", "can't handle", "don't know where to start",
-            "everything is", "falling apart",
-        ]
-        if any(phrase in content_lower for phrase in overwhelm_phrases):
-            return self._make_response(
-                "When everything feels like too much, the answer isn't to do more — "
-                "it's to do less, but deliberately.\n\n"
-                "What's the ONE thing that, if you did it today, would make you feel "
-                "even slightly better? Just one. We start there."
+        if latest_checkin:
+            user_context_parts.append(
+                f"Last check-in: mood {latest_checkin.mood_score}/10, "
+                f"energy {latest_checkin.energy_score}/10"
             )
+            if latest_checkin.mood_tags:
+                user_context_parts.append(f"Recent mood tags: {', '.join(latest_checkin.mood_tags)}")
 
-        # Default: empathetic, curious response
-        return self._make_response(
-            "I hear you. Tell me more about what's on your mind. "
-            "I'm here to listen and help you figure out the smallest next step."
+        response_text = await generate_response(
+            user_message=content,
+            conversation_history=history,
+            user_context="\n".join(user_context_parts),
         )
+        return self._make_response(response_text)
 
     def _flow_result_to_response(
         self, result: FlowResult, flow: BaseFlow, conversation_id: str
     ) -> dict:
-        """Convert a FlowResult to a WebSocket response dict."""
         response = {
             "type": "message",
             "content": result.response_message or "",
@@ -230,8 +161,6 @@ class ConversationEngine:
                 "flow_id": flow.flow_id,
             },
         }
-
-        # If there's a prompt, send it as a separate flow_prompt
         if result.prompt and not flow.is_complete:
             response["flow_prompt"] = {
                 "type": "flow_prompt",
@@ -243,49 +172,33 @@ class ConversationEngine:
                 "min_val": result.prompt.min_val,
                 "max_val": result.prompt.max_val,
             }
-
         return response
 
-    def _on_flow_complete(self, flow: BaseFlow, conversation: Conversation):
-        """Handle flow completion - save structured data to DB."""
+    async def _on_flow_complete(self, flow: BaseFlow, conversation: Conversation):
         if flow.flow_id == "check_in":
-            self._save_check_in(flow, conversation)
+            await self._save_check_in(flow, conversation)
 
-    def _save_check_in(self, flow: BaseFlow, conversation: Conversation):
-        """Save check-in data from completed flow."""
+    async def _save_check_in(self, flow: BaseFlow, conversation: Conversation):
         data = flow.collected_data
         check_in = CheckIn(
-            user_id=self.user.id,
+            user_id=str(self.user.id),
             check_in_type=data.get("check_in_type", "ad_hoc"),
             mood_score=data.get("mood_score", 5),
             energy_score=data.get("energy_score", 5),
             mood_tags=data.get("mood_tags"),
             top_intention=data.get("top_intention"),
-            conversation_id=conversation.id,
+            conversation_id=str(conversation.id),
         )
-        self.db.add(check_in)
-        self.db.commit()
+        await check_in.insert()
 
-    def _get_or_create_conversation(self, conversation_id: Optional[str]) -> Conversation:
+    async def _get_or_create_conversation(self, conversation_id: Optional[str]) -> Conversation:
         if conversation_id:
-            conversation = (
-                self.db.query(Conversation)
-                .filter(
-                    Conversation.id == conversation_id,
-                    Conversation.user_id == self.user.id,
-                )
-                .first()
-            )
-            if conversation:
+            conversation = await Conversation.get(conversation_id)
+            if conversation and conversation.user_id == str(self.user.id):
                 return conversation
 
-        conversation = Conversation(
-            user_id=self.user.id,
-            conversation_type="freeform",
-        )
-        self.db.add(conversation)
-        self.db.commit()
-        self.db.refresh(conversation)
+        conversation = Conversation(user_id=str(self.user.id), conversation_type="freeform")
+        await conversation.insert()
         return conversation
 
     def _make_response(self, content: str) -> dict:
